@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gita-essence-v1';
+const CACHE_NAME = 'gita-essence-v2';
 const ASSETS = [
   './',
   './index.html',
@@ -27,9 +27,32 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Cache-first, falling back to network, then caching what we fetch.
+// Navigations and index.html: network-first, so a fresh deploy is picked up
+// on the very next visit instead of waiting on a manual cache-name bump.
+// Falls back to the cached copy only if the network is unavailable.
+// Everything else (icons, manifest): cache-first, since those rarely change
+// and this saves bandwidth/loads instantly.
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
+
+  const isHtmlRequest =
+    event.request.mode === 'navigate' ||
+    event.request.url.endsWith('/') ||
+    event.request.url.endsWith('/index.html');
+
+  if (isHtmlRequest) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          return response;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached;
